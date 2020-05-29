@@ -31,6 +31,7 @@
 	<script type="text/javascript" src="http://api.map.baidu.com/api?v=2.0&ak=DUcoOOGEL6vt1ghHWaTSNr9BBykVhUnA"></script>
 	<!--加载鼠标绘制工具-->
 	<script type="text/javascript" src="http://api.map.baidu.com/library/DrawingManager/1.4/src/DrawingManager_min.js"></script>
+
 	<link rel="stylesheet" href="http://api.map.baidu.com/library/DrawingManager/1.4/src/DrawingManager_min.css" />
 
 
@@ -41,7 +42,7 @@
 		<div id="map" style="height:100%;-webkit-transition: all 0.5s ease-in-out;transition: all 0.5s ease-in-out;"></div>
 	</div>
 	<div id="result">
-		<input type="button" onclick="alert(i)" value="i" />
+		<input type="button" onclick="test()" value="i" />
 		<input type="button" onclick="alert(overlays.length)" value="个数" />
 		<input type="button" onclick="remove_marker()" value="覆盖物-1" />
 		<input type="button" onclick="remove_overlay();" value="删除覆盖物" />
@@ -58,28 +59,36 @@
 		map.setMapType(BMAP_HYBRID_MAP);
 		var point = new BMap.Point(118.826497,32.04023);                      //南航明故宫校区
 		map.centerAndZoom(point, 16);
-		var pointArr=new Array();
-		var labelArr=new Array();
-		var lineLabel = new Array();
-		var trailArr=new Array();
-		var line=new Array();
-		var p_line;
-		var rot = 0;
-		var p_point = new BMap.Point;
-		var pointmark = new Array();
-		var label = new Array();
-		var i=0;
-		var rcv_t_point = new BMap.Point;
-		var rcv_last_point = new Array();
-		var yaw = 0;
-		var LineMesgShow = true;
-		var last_point;
-		var overlays = [];
-		var StationFixed = 0;
-		var homemark;
+		var pointArr=new Array();                // 航点集合             BMap.Point
+		var labelArr=new Array();                // 航点的标签页
+		var lineLabel = new Array();             // 航线的标签页
+		var trailArr=new Array();                // 轨迹图标
+		var line=new Array();                    // 航线图标
+		var pointmark = new Array();             // 航点图标             BMap.Marker
+		var p_line;                              // 绘制航线时 粉红色预览航线
+		var rot = 0;                             // 直升机图标旋转角度
+		var p_point = new BMap.Point;            // 绘制航点时 默认的起点
+		var label = new Array();                 // 航点序号标签
+		var i=0;                                 // 航点个数
+		var rcv_last_point = new Array();        //接收坐标绘制航线时  每一段航线要显示起点终点坐标
+		var last_point;                          //轨迹绘制时 上次的坐标
+		
+		//坐标属性变量
+		var station_num = new Array();
+		var station_lng = new Array();
+		var station_lat = new Array();
+		var station_hei = new Array();
+		var station_spd = new Array();
+		var station_mod = new Array();
+		//家坐标
+		var homemark;                            
 		var homepoint;
+		//标志位
+		var LineMesgShow = false;
 		var HomeIsExist = 0;
+		var StationFixed = 0;
 		var Drawing = 0;
+		//菜单量
 		var menu = new BMap.ContextMenu();
 		var HomeMenu = new BMap.ContextMenu();
 		var HomeMenuItem = [
@@ -107,11 +116,11 @@
 			callback:function(){add_station();}
 		},
 		{
-			text:'编辑航点',
+			text:'拖拽航点',
 			callback:function(){editable();}
 		},
 		{
-			text:'编辑完成',
+			text:'固定航点',
 			callback:function(){diseditable();}
 		},
 		{
@@ -124,31 +133,45 @@
 		}];
 		//坐标转换变量
 		var piObj = {
-		x_PI : 3.14159265358979324 * 3000.0 / 180.0,
-		PIs : 3.1415926535897932384626,
-		a : 6378245.0,
-		ee : 0.00669342162296594323
-		}
+			x_PI : 3.1415926535897932384626 * 3000.0 / 180.0,
+			PIs : 3.1415926535897932384626,
+			a : 6378245.0,
+			ee : 0.00669342162296594323
+		};
+		// 添加地图类型控件
 		map.addControl(new BMap.MapTypeControl({
 		mapTypes:[
             BMAP_NORMAL_MAP,
             BMAP_HYBRID_MAP,
 			BMAP_SATELLITE_MAP
         ]}));
-	var myIcon = new BMap.Icon('./heli.png', new BMap.Size(40, 61), {
-					offset: new BMap.Size(0, 0), // 指定定位位置	
-					imageOffset: new BMap.Size(0, 0) // 设置图片偏移					
-				});
-	var myHome = new BMap.Icon('./home.png', new BMap.Size(40, 40), {
-					offset: new BMap.Size(0, 0), // 指定定位位置	
-					imageOffset: new BMap.Size(0, 0) // 设置图片偏移					
-	});
-	var mk = new BMap.Marker(point,{icon:myIcon,rotation:0,title: '11111'});//创建标注图标
-	map.addOverlay(mk);//将标注添加到地图中
+		// 自定义 飞机图标
+		var myIcon = new BMap.Icon('./heli.png', new BMap.Size(42, 63), {
+						offset: new BMap.Size(0, 0), // 指定定位位置	
+						imageOffset: new BMap.Size(0, 0), // 设置图片偏移
+						anchor:	new BMap.Size(20, 30)				
+					});
+		var mk = new BMap.Marker(point,{icon:myIcon,rotation:0,title: '11111'});//创建标注图标
+		map.addOverlay(mk);//将标注添加到地图中
+		// 自定义 home图标
+		var myHome = new BMap.Icon('./home.png', new BMap.Size(42, 42), {
+						offset: new BMap.Size(0, 0), // 指定定位位置	
+						imageOffset: new BMap.Size(0, 0), // 设置图片偏移	
+						anchor:	new BMap.Size(20, 20)				
+		});
+	
 	
 	map.enableScrollWheelZoom();   //启用滚轮放大缩小，默认禁用
 	map.disableDoubleClickZoom();
 	map.enableContinuousZoom();    //启用地图惯性拖拽，默认禁用
+	/***********************************************************************************
+	**   名       称 : none
+	**   参       数 : void
+	**   返  回   值 : void 
+	**   功       能 : 添加地图菜单、控件菜单
+	**   修 改 时 间 : 2020-01-20
+	**   改 进 功 能 :
+	************************************************************************************/
 	for(var n=0; n < txtMenuItem.length; n++){
 		menu.addItem(new BMap.MenuItem(txtMenuItem[n].text,txtMenuItem[n].callback));
 	}
@@ -159,6 +182,14 @@
 	new QWebChannel(qt.webChannelTransport, function(channel) {
         window.bridge = channel.objects.bridge;
     });
+	/***********************************************************************************
+	**   名       称 : IPlocate()
+	**   参       数 : void
+	**   返  回   值 : void
+	**   功       能 : 没有GPS坐标信息时  根据IP地址定位
+	**   修 改 时 间 : 2019-11-5
+	**   改 进 功 能 :
+	************************************************************************************/
 	function IPlocate(){
 		var myCity = new BMap.LocalCity();
 		myCity.get(myFun);
@@ -170,66 +201,47 @@
 	}
 	var myCity = new BMap.LocalCity();
 	myCity.get(myFun);
-
-	//鼠标双击设置家航点，并上传坐标
-	map.addEventListener("dblclick", function (e) {
-		if(StationFixed === 0)
-		{
-			if(HomeIsExist === 0)
-			{
-				homepoint = new BMap.Point(e.point.lng,e.point.lat);
-				homemark  = new BMap.Marker(homepoint,{icon:myHome,rotation:0,title: 'Home'});
-				map.addOverlay(homemark);
-				homemark.addContextMenu(HomeMenu);
-				var WGS_Point = BDToWGS(e.point.lng,e.point.lat);
-				bridge.getHome(WGS_Point[0], WGS_Point[1]);
-				HomeIsExist = 1;   
-			}
-			else if(HomeIsExist === 1)
-			{
-				homemark.removeContextMenu(HomeMenu);
-				map.removeOverlay(homemark);
-				homepoint = new BMap.Point(e.point.lng,e.point.lat);
-				homemark  = new BMap.Marker(homepoint,{icon:myHome,rotation:0,title: 'Home'});
-				map.addOverlay(homemark);
-				homemark.addContextMenu(HomeMenu);
-				var WGS_Point = BDToWGS(e.point.lng,e.point.lat);
-				bridge.getHome(WGS_Point[0], WGS_Point[1]);
-			}
-		}
-      });
-	
-	//移动家坐标
-	function movehome(){
-		StationFixed = 0;
-		homemark.enableDragging();
-		homemark.addEventListener('dragging',function(e){
-			var WGS_Point = BDToWGS(e.point.lng,e.point.lat);
-			bridge.getHome(WGS_Point[0], WGS_Point[1]);
-		});
-		//homemark.addEventListener('dragend',function)
-	}
-	//删除家坐标
-	function removehome(){
-		if(homemark == undefined){
-			return;
-		}
-		else{
-			map.removeOverlay(homemark);
-			bridge.getHome(0.0000000,0.0000000);
-			StationFixed = 0;
-		}
-	}
-	
-	//输入家坐标 添加标注
-	home_translateCallback = function(data){
+	/***********************************************************************************
+	**   名       称 : locate()
+	**   参       数 : void 
+	**   返  回   值 : void 
+	**   功       能 : 根据GPS坐标定位
+	**   修 改 时 间 : 2019-12-10
+	**   改 进 功 能 : 坐标由GPS原始坐标转百度坐标 
+	**		 		   last_point初始化  轨迹绘制由此开始
+	************************************************************************************/
+	cen_translateCallback = function(data){
 		if(data.status === 0){
-				homepoint = new BMap.Point(data.points[0].lng,data.points[0].lat);
-				homemark  = new BMap.Marker(homepoint,{icon:myHome,rotation:0,title: 'Home'});
-				map.addOverlay(homemark);
-				homemark.addContextMenu(HomeMenu);
-				map.setCenter(homepoint);
-			}
+			map.setCenter(data.points[0]);
+         	last_point = data.points[0];
+		}
+	}
+	function locate(lon,lat) {
+		var cen_convert = new BMap.Convertor();
+		var cen_point = [];
+		cen_point.push(new BMap.Point(lon,lat));
+		cen_convert.translate(cen_point, 1, 5, cen_translateCallback)
+	}
+
+	function back_home(){
+		map.setCenter(homepoint);
+	}
+	/***********************************************************************************
+	**   名       称 : gethome()
+	**   参       数 : void 
+	**   返  回   值 : void 
+	**   功       能 : 根据输入坐标设定家坐标
+	**   修 改 时 间 : 2020-03-11
+	**   改 进 功 能 : 输入为原始坐标 转换为百度坐标后 添加标注
+	************************************************************************************/
+	home_translateCallback = function(data){
+	if(data.status === 0){
+			homepoint = new BMap.Point(data.points[0].lng,data.points[0].lat);
+			homemark  = new BMap.Marker(homepoint,{icon:myHome,rotation:0,title: 'Home'});
+			map.addOverlay(homemark);
+			homemark.addContextMenu(HomeMenu);
+			map.setCenter(homepoint);
+		}
 	}
 	function gethome(){
 		var home_lng = prompt("经度");
@@ -256,63 +268,132 @@
 			}
 		}
 	}
-	//接收GPS坐标------->转换为百度坐标 并且定位
-	cen_translateCallback = function(data){
-		if(data.status === 0){
-			map.setCenter(data.points[0]);
-         	last_point = data.points[0];
-		}
-	}
-	function locate(lon,lat) {
-		var cen_convert = new BMap.Convertor();
-		var cen_point = [];
-		cen_point.push(new BMap.Point(lon,lat));
-		cen_convert.translate(cen_point, 1, 5, cen_translateCallback)
-	}
 
-	function back_home(){
-		map.setCenter(homepoint);
+	/***********************************************************************************
+	**   名       称 : 地图双击事件
+	**   参       数 : void
+	**   返  回   值 : void
+	**   功       能 : 地图上双击时 将该点设为家坐标
+	**   修 改 时 间 : 2020-03-11
+	**   改 进 功 能 : 添加  StationFixed 标志位 该标志位为 1 时  家坐标固定 禁止修改
+	**                添加 HomeIsExist 标志位 该标志位为1 时 先删除上一图标 再添加新图标
+	************************************************************************************/
+	map.addEventListener("dblclick", function (e) {
+		if(StationFixed === 0)
+		{
+			if(HomeIsExist === 0)
+			{
+				homepoint = new BMap.Point(e.point.lng,e.point.lat);
+				homemark  = new BMap.Marker(homepoint,{icon:myHome,rotation:0,title: 'Home'});
+				map.addOverlay(homemark);
+				homemark.addContextMenu(HomeMenu);
+				var WGS_Point = BDToWGS(e.point.lng,e.point.lat);
+				bridge.getHome(WGS_Point[0], WGS_Point[1]);
+				HomeIsExist = 1;   
+			}
+			else if(HomeIsExist === 1)
+			{
+				homemark.removeContextMenu(HomeMenu);
+				map.removeOverlay(homemark);
+				homepoint = new BMap.Point(e.point.lng,e.point.lat);
+				homemark  = new BMap.Marker(homepoint,{icon:myHome,rotation:0,title: 'Home'});
+				map.addOverlay(homemark);
+				homemark.addContextMenu(HomeMenu);
+				var WGS_Point = BDToWGS(e.point.lng,e.point.lat);
+				bridge.getHome(WGS_Point[0], WGS_Point[1]);
+			}
+		}
+	});
+	/***********************************************************************************
+	**   名       称 : sethome()
+	**   参       数 : 经度、纬度(原始坐标)
+	**   返  回   值 : void 
+	**   功       能 : 根据GPS坐标设置加坐标
+	**   修 改 时 间 : 2020-05-22
+	**   改 进 功 能 : 有GPS信号的前提下 双击家坐标标签 将飞机当前位置设为家坐标 (原始坐标-->百度坐标)
+	************************************************************************************/
+	function sethome(lng,lat){
+		if(HomeIsExist === 0)
+			{
+				var home_convert = new BMap.Convertor();
+				var con_point = [];
+				con_point.push(new BMap.Point(lng,lat));
+				home_convert.translate(con_point, 1, 5, home_translateCallback);
+				bridge.getHome(lng, lat);
+				HomeIsExist = 1;   
+			}
+			else if(HomeIsExist === 1)
+			{
+				homemark.removeContextMenu(HomeMenu);
+				map.removeOverlay(homemark);
+				var home_convert = new BMap.Convertor();
+				var con_point = [];
+				con_point.push(new BMap.Point(lng,lat));
+				home_convert.translate(con_point, 1, 5, home_translateCallback);
+				bridge.getHome(lng, lat);
+			}
 	}
-    //删除航点
-	function remove_marker(){
-		bridge.deletestation(--i);
-		if(i<1) i=0;
-		
-		map.removeOverlay(pointmark[i]);
-		map.removeOverlay(line[i]); 	
-		line.pop();
-		pointArr.pop();
-		pointmark.pop();	
-		p_point = pointArr[pointArr.length-1];
+	/***********************************************************************************
+	**   名       称 : movehome()
+	**   参       数 : void 
+	**   返  回   值 : void 
+	**   功       能 : 移动家坐标 即 home图标添加拖拽事件
+	**   修 改 时 间 : 2020-05-11
+	**   改 进 功 能 : 拖拽实时坐标由bridge.gethome(lng,lat)传回地面站 (百度坐标-->原始坐标)
+	************************************************************************************/
+	function movehome(){
+		StationFixed = 0;
+		homemark.enableDragging();
+		homemark.addEventListener('dragging',function(e){
+			var WGS_Point = BDToWGS(e.point.lng,e.point.lat);
+			bridge.getHome(WGS_Point[0], WGS_Point[1]);
+		});
 	}
-	//添加航点
+	/***********************************************************************************
+	**   名       称 : removehome()
+	**   参       数 : void 
+	**   返  回   值 : void 
+	**   功       能 : 删除家坐标
+	**   修 改 时 间 : 2020-05-11
+	**   改 进 功 能 : 图标删除 坐标清零
+	************************************************************************************/
+	function removehome(){
+		if(homemark == undefined){
+			return;
+		}
+		else{
+			map.removeOverlay(homemark);
+			bridge.getHome(0.0000000,0.0000000);
+			StationFixed = 0;
+		}
+	}	
+	/***********************************************************************************
+	**   名       称 : draw_marker()
+	**   参       数 : 点击的坐标
+	**   返  回   值 : void 
+	**   功       能 : 添加航点
+	**   修 改 时 间 : 2020-05-22
+	**   改 进 功 能 : 单击绘点 由点绘线 并添加标签
+	************************************************************************************/
 	function draw_marker(e){
 		var p = new BMap.Point(e.point.lng,e.point.lat);
 		p_point = new BMap.Point(e.point.lng,e.point.lat);
-		//pointmark[i] = new BMap.Marker(p);
 		pointmark.push(new BMap.Marker(p));
 		map.addOverlay(pointmark[i]);
 		label[i] = new BMap.Label(i,{offset:new BMap.Size(20 ,-10)});
 		pointmark[i].setLabel(label[i]);
 		var WGS_Point = BDToWGS(pointmark[i].getPosition().lng,pointmark[i].getPosition().lat);	//坐标转换 
-		bridge.getstation(i,WGS_Point[0].toFixed(7),WGS_Point[1].toFixed(7));
+		bridge.getstation(i,WGS_Point[0].toFixed(7),WGS_Point[1].toFixed(7),10.0,20.0,0);
+		station_num.push(i);
+		station_lng.push(WGS_Point[0]);
+		station_lat.push(WGS_Point[1]);
+		station_hei.push(10.0);
+		station_spd.push(20.0);
+		station_mod.push(0);
 		(function(i){
-			pointmark[i].addEventListener('mouseover',function(){
-				labelArr[i] = new BMap.Label(WGS_Point[0].toFixed(7)+', '+WGS_Point[1].toFixed(7),
-				{offset:new BMap.Size(-30,40)});
-				labelArr[i].setStyle({color:"red"});
-				pointmark[i].setLabel(labelArr[i]);
-				map.removeEventListener('click',draw_marker);
-			})	
-
-			pointmark[i].addEventListener('mouseout',function(){
-				labelArr[i].setStyle({
-						display:"none"
-				});	
-				if(Drawing === 1){
-					map.addEventListener('click',draw_marker);	
-				}					
-			}) 
+			labelArr[i] = new BMap.Label(WGS_Point[0].toFixed(7)+', '+WGS_Point[1].toFixed(7),
+			{offset:new BMap.Size(-30,40)});
+			labelArr[i].setStyle({color:"red"});
 			pointmark[i].addEventListener('click',function(){
 				bridge.clickStation(i);
 			})
@@ -323,7 +404,15 @@
 		}
 		i++;
 		}
-	//根据航点连线
+	/***********************************************************************************
+	**   名       称 : draw_line(p1,p2)
+	**   参       数 : 航点1 ，航点2
+	**   返  回   值 : void 
+	**   功       能 : 由传回的两个航点 连接为航线
+	**   修 改 时 间 : 2020-04-23
+	**   改 进 功 能 : 添加航线标签页  显示 起点 终点  长度
+	**				  添加显示标志位 LineMesgShow 标志位为 0 时 标签不显示
+	************************************************************************************/
 	function draw_line(p1,p2){
 		line[i] = new BMap.Polyline([
 		p1,
@@ -345,14 +434,20 @@
 							map.openInfoWindow(lineLabel[i],midp);
 						}
 					})
-
 					line[i].addEventListener('mouseout',function(){
 						line[i].setStrokeColor("yellow");
 						map.closeInfoWindow();
 					})
 				})(i)	
 	}
-	//
+	/***********************************************************************************
+	**   名       称 : add_infowin(n)
+	**   参       数 : 航线标号
+	**   返  回   值 : void
+	**   功       能 : 由地面站回传的航点绘制为航线时  给航线添加标签页
+	**   修 改 时 间 : 2020-02-23
+	**   改 进 功 能 : 
+	************************************************************************************/
 	function add_infowin(n){
 		var midp = new BMap.Point((pointmark[n].getPosition().lng+pointmark[n-1].getPosition().lng)/2,(pointmark[n].getPosition().lat+pointmark[n-1].getPosition().lat)/2);
 		var p1_wgs = BDToWGS(pointmark[n-1].getPosition().lng,pointmark[n-1].getPosition().lat);
@@ -372,8 +467,14 @@
 			map.closeInfoWindow();
 		})
 	}
-
-	//根据GPS坐标绘制轨迹
+	/***********************************************************************************
+	**   名       称 : draw_trail(lon,lat,yaw)
+	**   参       数 : 经度，纬度，航向
+	**   返  回   值 : void
+	**   功       能 : 由GPS坐标和航向角绘制飞行轨迹 (原始坐标-->百度坐标)
+	**   修 改 时 间 : 2019-12-18
+	**   改 进 功 能 : 添加航向角  运动时图标自动根据标度旋转
+	************************************************************************************/
 	translateCallback = function(data){
 		if(data.status === 0){
 			map.removeOverlay(mk);
@@ -392,10 +493,16 @@
 		var convertor = new BMap.Convertor();
 		var new_point = [];
 		new_point.push(new BMap.Point(lon,lat));
-		
-		
 		convertor.translate(new_point,1,5,translateCallback);	
 	}
+	/***********************************************************************************
+	**   名       称 : draw_pline(e)
+	**   参       数 : 鼠标移动到的点
+	**   返  回   值 : void
+	**   功       能 : 添加航点时 粉红色预览航线
+	**   修 改 时 间 : 2019-12-18
+	**   改 进 功 能 :
+	************************************************************************************/
 	function draw_pline(e){
 		var t = new BMap.Point(e.point.lng,e.point.lat);
 			if(i>0)
@@ -408,15 +515,80 @@
 				map.addOverlay(p_line);
 			}
 	}
-	
-	//清除覆盖物
+	/***********************************************************************************
+	**   名       称 : remove_marker
+	**   参       数 : void
+	**   返  回   值 : void 
+	**   功       能 : 删除最后一个航点
+	**   修 改 时 间 : 2020-02-18
+	**   改 进 功 能 : 
+	************************************************************************************/
+	function remove_marker(){
+		bridge.deletelaststation(--i);
+		if(i<1) i=0;
+		map.removeOverlay(pointmark[i]);
+		map.removeOverlay(line[i]); 	
+		line.pop();
+		pointArr.pop();
+		pointmark.pop();
+		station_num.pop();
+		station_lng.pop();
+		station_lat.pop();
+		station_hei.pop();
+		station_spd.pop();
+		station_mod.pop();
+		p_point = pointArr[pointArr.length-1];
+	}
+	/***********************************************************************************
+	**   名       称 : clear_marker()
+	**   参       数 : void 
+	**   返  回   值 : void 
+	**   功       能 : 删除所有航点
+	**   修 改 时 间 : 2020-05-11
+	**   改 进 功 能 : 
+	************************************************************************************/
+	function clear_marker(){
+		
+		while(i>0)
+		{
+			i--;
+			map.removeOverlay(pointmark[i]);
+			map.removeOverlay(line[i]); 	
+		}
+		line.length = 0;
+		pointArr.length = 0;
+		pointmark.length = 0;
+		station_num.length = 0;
+		station_lng.length = 0;
+		station_lat.length = 0;
+		station_hei.length = 0;
+		station_spd.length = 0;
+		station_mod.length = 0;
+		p_point = pointArr[pointArr.length-1];
+		bridge.station_clear();
+	}
+	/***********************************************************************************
+	**   名       称 : remove_overlay()
+	**   参       数 : void 
+	**   返  回   值 : void 
+	**   功       能 : 删除所有航点
+	**   修 改 时 间 : 2020-05-11
+	**   改 进 功 能 : 
+	************************************************************************************/
 	function remove_overlay(){
 		while(i>0)
 		{
 			remove_marker();
 		}
 	}
-	//添加航点
+	/***********************************************************************************
+	**   名       称 : add_station()
+	**   参       数 : void
+	**   返  回   值 : void
+	**   功       能 : 给地图添加单击事件 绘制航点
+	**   修 改 时 间 : 2019-11-13
+	**   改 进 功 能 :
+	************************************************************************************/
 	function add_station(){
 		map.addEventListener('click',draw_marker);
 		map.addEventListener('mousemove',draw_pline);
@@ -428,14 +600,28 @@
 		});
 		Drawing = 1;
 	}
-	//停止添加
+	/***********************************************************************************
+	**   名       称 : stop_add()
+	**   参       数 : void 
+	**   返  回   值 : void 
+	**   功       能 : 删除地图的单击事件  停止绘制航点
+	**   修 改 时 间 : 2019-11-13
+	**   改 进 功 能 : 
+	************************************************************************************/
 	function stop_add(){
 		map.removeEventListener('click',draw_marker);
 		map.removeEventListener('mousemove',draw_pline);
 		map.removeOverlay(p_line);
 		Drawing = 0;
 	}
-	//设置航点可拖拽
+	/***********************************************************************************
+	**   名       称 : editable()
+	**   参       数 : void
+	**   返  回   值 : void 
+	**   功       能 : 航点可拖拽
+	**   修 改 时 间 : 2020-05-11
+	**   改 进 功 能 : 拖拽时显示实时坐标  预览航线
+	************************************************************************************/
 	function editable(){
 		stop_add();                            //拖拽的时候关闭添加航点
 		for(var j=0;j<pointmark.length;j++)
@@ -452,7 +638,7 @@
 						],{strokeColor:"pink", strokeWeight:5, strokeOpacity:0.5});
 						map.addOverlay(line[j]);
 					}
-						else if(j == 0 )                          //第一个航点
+					else if(j == 0 )                          //第一个航点
 					{
 						map.removeOverlay(line[j+1]);           //先把之前的折线删除
 						line[j+1] = new BMap.Polyline([         //添加新的折线
@@ -478,9 +664,13 @@
 					}
 					var p_wgs = BDToWGS(pointmark[j].getPosition().lng,pointmark[j].getPosition().lat);
 					labelArr[j].setContent(p_wgs[0].toFixed(7)+','+p_wgs[1].toFixed(7)); //实时显示拖拽点的坐标 
+					labelArr[j].setStyle({
+						display:"block"
+						});	
+					pointmark[j].setLabel(labelArr[j]);
 				})
 				pointmark[j].addEventListener('dragend',function(){         //拖拽结束 生成黄色航线
-					
+					var p_wgs = BDToWGS(pointmark[j].getPosition().lng,pointmark[j].getPosition().lat);
 					if((j == pointmark.length-1) && (j !=0 ))
 					{
 						map.removeOverlay(line[j]);
@@ -527,19 +717,121 @@
 							add_infowin(j);
 						})(j)		          		
 					}
-						var p_wgs = BDToWGS(pointmark[j].getPosition().lng,pointmark[j].getPosition().lat);
-						bridge.getstation(j,p_wgs[0].toFixed(7),p_wgs[1].toFixed(7)); 
+					bridge.getstation(j,p_wgs[0].toFixed(7),p_wgs[1].toFixed(7),station_hei[station_num[j]]
+					,station_spd[station_num[j]],station_mod[station_num[j]]); 
+					labelArr[j].setStyle({
+						display:"none"
+						});	
 					})
 				})(j)
 			}
 	}
-	//设置航点不可拖拽
+	/***********************************************************************************
+	**   名       称 : diseditable()
+	**   参       数 : void
+	**   返  回   值 : void
+	**   功       能 : 航点不可拖拽
+	**   修 改 时 间 : 2020-05-11
+	**   改 进 功 能 :
+	************************************************************************************/
 	function diseditable(){
 		for(var j=0;j<pointmark.length;j++){
 			pointmark[j].disableDragging();
 		}
 	}
-	//航线标签是否显示
+	/***********************************************************************************
+	**   名       称 : movestation(j,lng,lat,hei,spd,mod)
+	**   参       数 : 航点标号，经度，纬度，高度，速度，模式
+	**   返  回   值 : void
+	**   功       能 : 由地面修改杭电后调用
+	**   修 改 时 间 : 2020-05-18
+	**   改 进 功 能 :
+	************************************************************************************/
+	function movestation(j,lng,lat,hei,spd,mod){
+		station_hei[j] = hei;
+		station_spd[j] = spd;
+		station_mod[j] = mod;
+		var station_convert = new BMap.Convertor();
+		var con_point = [];
+		con_point.push(new BMap.Point(lng,lat));
+		station_convert.translate(con_point, 1, 5, function(data){
+			if(data.status === 0){
+				pointArr[j] = data.points[0];
+				map.removeOverlay(pointmark[j]);
+				pointmark[j] = new BMap.Marker(data.points[0]);
+				map.addOverlay(pointmark[j]);
+				pointmark[j].setLabel(label[j]);
+				pointmark[j].addEventListener('click',function(){
+					bridge.clickStation(j);
+				})
+
+				if((j == pointmark.length-1) && (j !=0 ))
+				{
+					map.removeOverlay(line[j]);
+						line[j] = new BMap.Polyline([      //添加折线
+							data.points[0],
+							pointmark[j-1].getPosition()
+					],{strokeColor:"yellow", strokeWeight:5, strokeOpacity:0.9});
+					map.addOverlay(line[j]);
+					pointArr[j] = data.points[0];
+					add_infowin(j);
+				}
+				else if(j == 0)
+				{
+					map.removeOverlay(line[j+1]);  //先把之前的折线删除
+					line[j+1] = new BMap.Polyline([     //添加折线
+						pointmark[j+1].getPosition(),
+						data.points[0]
+					],{strokeColor:"yellow", strokeWeight:5, strokeOpacity:0.9});
+					map.addOverlay(line[j+1]); 
+					pointArr[j] = data.points[0];					
+					add_infowin(j+1);
+				}
+				else
+				{
+					map.removeOverlay(line[j+1]);  //先把之前的两条折线删除
+					map.removeOverlay(line[j]);
+					line[j+1] = new BMap.Polyline([     //添加第一条折线
+					pointmark[j+1].getPosition(),
+					data.points[0]
+					],{strokeColor:"yellow", strokeWeight:5, strokeOpacity:0.9});
+					map.addOverlay(line[j+1]); 	
+
+					line[j] = new BMap.Polyline([      //添加第二条折线
+					data.points[0],
+					pointmark[j-1].getPosition()
+					],{strokeColor:"yellow", strokeWeight:5, strokeOpacity:0.9});
+					map.addOverlay(line[j]);    
+					pointArr[j] = data.points[0];	
+					add_infowin(j+1);
+					add_infowin(j);
+				}
+			}
+		});
+	}
+	/***********************************************************************************
+	**   名       称 : deletemidstation(num)
+	**   参       数 : 删除航点的标号
+	**   返  回   值 : void
+	**   功       能 : 由地面站调用 删除某个航点
+	**   修 改 时 间 : 2020-05-27
+	**   改 进 功 能 : 
+	************************************************************************************/
+	function deletemidstation(num){
+		map.removeOverlay(pointmark[num]);
+		map.removeOverlay(line[num+1]);
+		map.removeOverlay(line[num]);
+		bridge.deletemidstation(num);
+	};
+
+	/***********************************************************************************
+	**   名       称 :  showlinemesg()
+	**   参       数 :  void
+	**   返  回   值 :  void
+	**   功       能 :  设置航线标签 显示/隐藏
+	**   修 改 时 间 :  2020-02-18
+	**   改 进 功 能 :
+	************************************************************************************/
 	function showlinemesg(){
 		if(LineMesgShow == true){
 			LineMesgShow = false;
@@ -550,72 +842,104 @@
 			txtMenuItem[3].text = '显示航线标签';
 		}
 	}
-	//接收点坐标
-	function recivepoint(num,lng,lat){          // 输入是原始坐标
-		i = num;	
+
+	/***********************************************************************************
+	**   名       称 : recivepoint(num,lng,lat,hei,spd,mod)
+	**   参       数 : 航点标号，经度，纬度，高度，速度，模式
+	**   返  回   值 : void
+	**   功       能 : 由地面站调用 读取MapDialog中的行点后上传
+	**   修 改 时 间 : 2020-05-20
+	**   改 进 功 能 :
+	************************************************************************************/
+	function recivepoint(num,lng,lat,hei,spd,mod){          // 输入是原始坐标
+		station_num.push(num);
+		station_lng.push(lng);
+		station_lat.push(lat);
+		station_hei.push(hei);
+		station_spd.push(spd);
+		station_mod.push(mod);
 		rcv_last_point.push(new BMap.Point(lng,lat));					        // p和 p_point 是对图上要标注的点    所以要坐标转换  原始->百度
-		var tmp = WGSToBD(lng,lat);
-		var  p  = new BMap.Point(tmp[0],tmp[1]);
-		p_point = new BMap.Point(tmp[0],tmp[1]);     //添加坐标时 虚拟航线的起始坐标
-		pointmark.push(new BMap.Marker(p));
-		map.addOverlay(pointmark[i]);
-		label[i] = new BMap.Label(i,{offset:new BMap.Size(20 ,-10)});
-		pointmark[i].setLabel(label[i]);
-		bridge.getstation(i,lng,lat);           // 传给地面站的 就是原始坐标   无需转换
-		(function(i){                            // 标签显示的   就是原始坐标   无需转换
-				pointmark[i].addEventListener('mouseover',function(){
-					labelArr[i] = new BMap.Label(lng.toFixed(7)+', '+lat.toFixed(7),
-					{offset:new BMap.Size(-30,40)});
-					labelArr[i].setStyle({color:"red"});
-					pointmark[i].setLabel(labelArr[i]);
-					map.removeEventListener('click',draw_marker);
-				})				
-				pointmark[i].addEventListener('mouseout',function(){
-						labelArr[i].setStyle({
-						display:"none"
-					});	
-					if(Drawing === 1){
-						map.addEventListener('click',draw_marker);	
-					}	
-				}) 
-				pointmark[i].addEventListener('click',function(){
-					bridge.clickStation(i);
-				})
-			})(i)  
-		pointArr.push(p);
-		if(i>0){
-			line[i] = new BMap.Polyline([
-				pointArr[i-1],
-				pointArr[i]
-			],{strokeColor:"yellow", strokeWeight:5, strokeOpacity:0.9});
-			map.addOverlay(line[i]); 
-			(function(i){
-					var midp = new BMap.Point((pointArr[i-1].lng+pointArr[i].lng)/2,(pointArr[i-1].lat+pointArr[i].lat)/2);
-					line[i].addEventListener('mouseover',function(){
+
+		var con_point = new BMap.Point(lng,lat);
+		var conv = new BMap.Convertor();
+        var pArr = [];
+        pArr.push(con_point);
+        conv.translate(pArr, 1, 5, function(data){
+			if(data.status === 0)                    //上传的坐标 转换完成
+			{
+				var p = new BMap.Point(data.points[0].lng,data.points[0].lat);
+				p_point = new BMap.Point(data.points[0].lng,data.points[0].lat);
+				pointmark.push(new BMap.Marker(p));
+				map.addOverlay(pointmark[num]);
+				label[num] = new BMap.Label(num,{offset:new BMap.Size(20 ,-10)});
+				pointmark[num].setLabel(label[num]);
+				bridge.getstation(num,lng,lat,hei,spd,mod);           // 传给地面站的 就是原始坐标   无需转换
+				(function(num){                            // 标签显示的   就是原始坐标   无需转换
+							pointmark[num].addEventListener('click',function(){
+							bridge.clickStation(num);
+						})
+					})(num)  
+				pointArr.push(p);
+				if(num>0){
+				line[num] = new BMap.Polyline([
+					pointArr[num-1],
+					pointArr[num]
+				],{strokeColor:"yellow", strokeWeight:5, strokeOpacity:0.9});
+				map.addOverlay(line[num]); 
+				(function(num){
+					var midp = new BMap.Point((pointArr[num-1].lng+pointArr[num].lng)/2,(pointArr[num-1].lat+pointArr[num].lat)/2);
+					line[num].addEventListener('mouseover',function(){
 						if(LineMesgShow == true){
-							line[i].setStrokeColor("blue");
-							var mesg = "起点："+rcv_last_point[i-1].lng.toFixed(7)+", "+rcv_last_point[i-1].lat.toFixed(7)+"\n"
-									+"终点："+rcv_last_point[i].lng.toFixed(7)+", "+rcv_last_point[i].lat.toFixed(7)+"\n"
-									+"长度："+map.getDistance(pointArr[i-1],pointArr[i]).toFixed(2)+' 米';
-							lineLabel[i] = new BMap.InfoWindow(mesg,{width:0,height:0,title:"第"+i+"段航路：\n"});
-							map.openInfoWindow(lineLabel[i],midp);
+							line[num].setStrokeColor("blue");
+							var mesg = "起点："+rcv_last_point[num-1].lng.toFixed(7)+", "+rcv_last_point[num-1].lat.toFixed(7)+"\n"
+									+"终点："+rcv_last_point[num].lng.toFixed(7)+", "+rcv_last_point[num].lat.toFixed(7)+"\n"
+									+"长度："+map.getDistance(pointArr[num-1],pointArr[num]).toFixed(2)+' 米';
+							lineLabel[num] = new BMap.InfoWindow(mesg,{width:0,height:0,title:"第"+num+"段航路：\n"});
+							map.openInfoWindow(lineLabel[num],midp);
 						}
 					})
-					line[i].addEventListener('mouseout',function(){
-						line[i].setStrokeColor("yellow");
+					line[num].addEventListener('mouseout',function(){
+						line[num].setStrokeColor("yellow");
 						map.closeInfoWindow();
 					})
-				})(i)	
-		}	
-		i++;                   // 对应 remove_marker(); 中 的 --i;
+				})(num)	
+				}
+				bridge.getonepoint(num);
+			}
+		});
+		i = num + 1;                   // 对应 remove_marker(); 中 的 --i;	
 	}
-	//读取坐标重新绘制航线
-	function redraw(){
-		
+	/***********************************************************************************
+	**   名       称 : GetAngle(lng1,lat1,lng2,lat2)
+	**   参       数 : 点1 ， 点2
+	**   返  回   值 : 方位角
+	**   功       能 : 计算两点之间的方位角
+	**   修 改 时 间 : 2020-05-27
+	**   改 进 功 能 :
+	************************************************************************************/
+	function GetAngle(lng1,lat1,lng2,lat2){
+		var PI = 3.1415926;
+    	var x = lng2 - lng1;
+    	var y = lat2 - lat1;
+    	var angle = Math.atan2(x,y) * 180 / PI;
+    	if(angle<0) 
+			return angle+360.0;
+		else
+			return angle; 
 	}
+	/***********************************************************************************
+	**   名       称 :
+	**   参       数 :
+	**   返  回   值 :
+	**   功       能 :坐标统一  
+	**				(标签、文本框)显示出来的  和 输入的都是原始坐标； 
+	**				只有在地图上标注的航点和航线及轨迹 是 百度坐标
+	**   修 改 时 间 :
+	**   改 进 功 能 :
+	************************************************************************************/
 	//坐标统一  ------- (标签、文本框)显示出来的  和 输入的都是原始坐标； 只有在地图上标注的航点和航线及轨迹 是 百度坐标
 	function BDToGc(bd_lon, bd_lat) {
-		var x_pi = 3.14159265358979324 * 3000.0 / 180.0;
+		var x_pi = 3.1415926535897932384626 * 3000.0 / 180.0;
 		var x = bd_lon - 0.0065;
 		var y = bd_lat - 0.006;
 		var z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * x_pi);
@@ -650,9 +974,9 @@
 		var sqrtmagic = Math.sqrt(magic);
 		dlat = (dlat * 180.0) / ((piObj.a * (1 - piObj.ee)) / (magic * sqrtmagic) * piObj.PIs);
 		dlng = (dlng * 180.0) / (piObj.a / sqrtmagic * Math.cos(radlat) * piObj.PIs);
-		mglat = lat + dlat;
-		mglng = lng + dlng;
-		return [lng * 2 - mglng, lat * 2 - mglat];
+		mglat = lat - dlat;
+		mglng = lng - dlng;
+		return [mglng, mglat];
 	}
 	function WGSToGC(WGS_lng,WGS_lat){
 		var dlat = transformlat(WGS_lng - 105.0, WGS_lat - 35.0);
